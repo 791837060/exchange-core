@@ -55,7 +55,7 @@ public final class StateHashReportQuery implements ReportQuery<StateHashReportRe
 
         final SortedMap<StateHashReportResult.SubmoduleKey, Integer> hashCodes = new TreeMap<>();
 
-        final int moduleId = matchingEngine.getShardId();
+        final int moduleId = matchingEngine.getShardId(); // 0 1 2 3 ...
 
         hashCodes.put(
                 StateHashReportResult.createKey(moduleId, StateHashReportResult.SubmoduleType.MATCHING_BINARY_CMD_PROCESSOR),

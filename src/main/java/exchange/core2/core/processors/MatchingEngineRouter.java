@@ -67,6 +67,7 @@ public final class MatchingEngineRouter implements WriteBytesMarshallable {
 
     // sharding by symbolId
     private final int shardId;
+    // 碎片掩码
     private final long shardMask;
 
     private final String exchangeId; // TODO validate
@@ -99,7 +100,7 @@ public final class MatchingEngineRouter implements WriteBytesMarshallable {
         this.folder = Paths.get(DiskSerializationProcessorConfiguration.DEFAULT_FOLDER);
 
         this.shardId = shardId;
-        this.shardMask = numShards - 1;
+        this.shardMask = numShards - 1; //碎片掩码
         this.serializationProcessor = serializationProcessor;
         this.orderBookFactory = orderBookFactory;
         this.eventsHelper = new OrderBookEventsHelper(sharedPool::getChain);
@@ -170,6 +171,9 @@ public final class MatchingEngineRouter implements WriteBytesMarshallable {
 
     public void processOrder(long seq, OrderCommand cmd) {
 
+        //ultemp
+        //log.info("MatchingEngineRouter processOrder currentTimeMillis {} shardId {} cmd {}", System.currentTimeMillis(), shardId, cmd);
+
         final OrderCommandType command = cmd.command;
 
         if (command == OrderCommandType.MOVE_ORDER
@@ -178,18 +182,22 @@ public final class MatchingEngineRouter implements WriteBytesMarshallable {
                 || command == OrderCommandType.REDUCE_ORDER
                 || command == OrderCommandType.ORDER_BOOK_REQUEST) {
             // process specific symbol group only
+            // 仅处理特定符号组
+            // 仅处理特定交易对
             if (symbolForThisHandler(cmd.symbol)) {
                 processMatchingCommand(cmd);
             }
         } else if (command == OrderCommandType.BINARY_DATA_QUERY || command == OrderCommandType.BINARY_DATA_COMMAND) {
 
             final CommandResultCode resultCode = binaryCommandsProcessor.acceptBinaryFrame(cmd);
+            // 处理所有符号组，只有处理器0写入结果
             if (shardId == 0) {
                 cmd.resultCode = resultCode;
             }
 
         } else if (command == OrderCommandType.RESET) {
             // process all symbols groups, only processor 0 writes result
+            // 处理所有符号组，只有处理器0写入结果
             orderBooks.clear();
             binaryCommandsProcessor.reset();
             if (shardId == 0) {
@@ -197,11 +205,13 @@ public final class MatchingEngineRouter implements WriteBytesMarshallable {
             }
 
         } else if (command == OrderCommandType.NOP) {
+            // 只有处理器0写入结果
             if (shardId == 0) {
                 cmd.resultCode = CommandResultCode.SUCCESS;
             }
 
         } else if (command == OrderCommandType.PERSIST_STATE_MATCHING) {
+            // DiskSerializationProcessor write snapshot
             final boolean isSuccess = serializationProcessor.storeData(
                     cmd.orderId,
                     seq,
@@ -210,6 +220,7 @@ public final class MatchingEngineRouter implements WriteBytesMarshallable {
                     shardId,
                     this);
             // Send ACCEPTED because this is a first command in series. Risk engine is second - so it will return SUCCESS
+            // 发送ACCEPTED，因为这是序列中的第一个命令。风险引擎处于第二位，因此它将返回SUCCESS
             UnsafeUtils.setResultVolatile(cmd, isSuccess, CommandResultCode.ACCEPTED, CommandResultCode.STATE_PERSIST_MATCHING_ENGINE_FAILED);
         }
 
@@ -231,6 +242,7 @@ public final class MatchingEngineRouter implements WriteBytesMarshallable {
 
 
     private boolean symbolForThisHandler(final long symbol) {
+        //shardMask 分片掩码
         return (shardMask == 0) || ((symbol & shardMask) == shardId);
     }
 
@@ -259,9 +271,10 @@ public final class MatchingEngineRouter implements WriteBytesMarshallable {
             cmd.resultCode = IOrderBook.processCommand(orderBook, cmd);
 
             // posting market data for risk processor makes sense only if command execution is successful, otherwise it will be ignored (possible garbage from previous cycle)
+            // 只有在命令执行成功的情况下，为风险处理程序发布市场数据才有意义，否则它将被忽略（可能是上一个周期的垃圾）
             // TODO don't need for EXCHANGE mode order books?
             // TODO doing this for many order books simultaneously can introduce hiccups
-            if ((cfgSendL2ForEveryCmd || (cmd.serviceFlags & 1) != 0)
+            if ((cfgSendL2ForEveryCmd || (cmd.serviceFlags & 1) != 0) //1&1=1；真&&真=真。1&0=0；真&&假=假
                     && cmd.command != OrderCommandType.ORDER_BOOK_REQUEST
                     && cmd.resultCode == CommandResultCode.SUCCESS) {
 

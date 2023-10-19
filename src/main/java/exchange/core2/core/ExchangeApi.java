@@ -917,7 +917,7 @@ public final class ExchangeApi {
             cmd.command = OrderCommandType.GROUPING_CONTROL;
             cmd.resultCode = CommandResultCode.NEW;
 
-            cmd.orderId = mode;
+            cmd.orderId = mode;//方式
             cmd.timestamp = timestampNs;
         });
 

@@ -340,6 +340,8 @@ public final class OrderBookDirectImpl implements IOrderBook {
 
         // TODO avoid double lookup ?
         final DirectOrder order = orderIdIndex.get(cmd.orderId);
+        // ultemp
+        log.info("orderBookDirectImpl cancelOrder {}", order);
         if (order == null || order.uid != cmd.uid) {
             return CommandResultCode.MATCHING_UNKNOWN_ORDER_ID;
         }

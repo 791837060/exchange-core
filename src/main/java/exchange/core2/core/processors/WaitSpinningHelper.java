@@ -34,6 +34,7 @@ public final class WaitSpinningHelper {
     private final int yieldLimit;
 
     // blocking mode, using same locking objects that Disruptor operates with
+    // 阻塞模式，使用与Disruptor操作相同的锁定对象
     private final boolean block;
     private final BlockingWaitStrategy blockingDisruptorWaitStrategy;
     private final Lock lock;
@@ -96,7 +97,7 @@ public final class WaitSpinningHelper {
 
     public void signalAllWhenBlocking() {
         if (block) {
-            blockingDisruptorWaitStrategy.signalAllWhenBlocking();
+            blockingDisruptorWaitStrategy.signalAllWhenBlocking(); //调用signalAllWhenBlocking方法做唤醒处理
         }
     }
 

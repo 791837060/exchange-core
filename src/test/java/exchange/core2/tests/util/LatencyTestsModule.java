@@ -59,7 +59,7 @@ public class LatencyTestsModule {
                                        final TestDataParameters testDataParameters,
                                        final InitialStateConfiguration initialStateCfg,
                                        final SerializationConfiguration serializationCfg,
-                                       final int warmupCycles) {
+                                       final int warmupCycles) { //预热周期
 
         final int targetTps = 200_000; // transactions per second
         final int targetTpsStep = 100_000;
@@ -322,6 +322,7 @@ public class LatencyTestsModule {
 
         final ExchangeTestContainer.TestDataFutures testDataFutures = ExchangeTestContainer.prepareTestDataAsync(testDataParameters, 1);
 
+        //ExchangeCore.builder()
         try (final ExchangeTestContainer container = ExchangeTestContainer.create(performanceConfiguration, initialStateConfiguration, SerializationConfiguration.DEFAULT)) {
 
             final ExchangeApi api = container.getApi();
@@ -401,12 +402,12 @@ public class LatencyTestsModule {
                         .mapToObj(i -> testIteration.apply(targetTps))
                         .forEach(res -> log.debug("warming up ({} hiccups)", res.size()));
 
-                log.debug("Warmup done, starting tests");
+                log.debug("Warmup done, starting tests"); // 预热完成，开始测试
                 IntStream.range(0, 10000)
                         .mapToObj(i -> testIteration.apply(targetTps))
                         .forEach(res -> {
                             if (res.isEmpty()) {
-                                log.debug("no hiccups");
+                                log.debug("no hiccups"); //没有打嗝
                             } else {
                                 log.debug("------------------ {} hiccups -------------------", res.size());
                                 res.forEach((timestamp, delay) -> log.debug("{}: {}µs", timestamp.toLocalTime(), delay / 1000));

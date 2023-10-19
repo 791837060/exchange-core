@@ -93,7 +93,7 @@ public class ITCoreExample {
         System.out.println("BatchAddSymbolsCommand result: " + future.get());
 
 
-        // create user uid=301
+        // create user uid=301 ADD_USER
         future = api.submitCommandAsync(ApiAddUser.builder()
                 .uid(301L)
                 .build());
@@ -101,7 +101,8 @@ public class ITCoreExample {
         System.out.println("ApiAddUser 1 result: " + future.get());
 
 
-        // create user uid=302
+        // create user uid=302 ADD_USER
+        // private final LongObjectHashMap<UserProfile> userProfiles;
         future = api.submitCommandAsync(ApiAddUser.builder()
                 .uid(302L)
                 .build());
@@ -159,7 +160,7 @@ public class ITCoreExample {
                 .symbol(symbolXbtLtc)
                 .build());
 
-        System.out.println("ApiPlaceOrder 2 result: " + future.get());
+        System.out.println("ApiPlaceOrder 2 result: " + future.get());// OrderBookNaiveImpl
 
 
         // request order book

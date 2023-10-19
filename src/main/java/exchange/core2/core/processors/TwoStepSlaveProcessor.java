@@ -85,19 +85,20 @@ public final class TwoStepSlaveProcessor implements EventProcessor {
     }
 
     public void handlingCycle(final long processUpToSequence) {
+        // 消费者线程一直在while循环中不断获取生产者数据， 直到处理完组内消息
         while (true) {
             OrderCommand event = null;
             try {
-                long availableSequence = waitSpinningHelper.tryWaitFor(nextSequence);
+                long availableSequence = waitSpinningHelper.tryWaitFor(nextSequence); //可用序列
 
                 // process batch
-                while (nextSequence <= availableSequence && nextSequence < processUpToSequence) {
-                    event = dataProvider.get(nextSequence);
-                    eventHandler.onEvent(nextSequence, event); // TODO check if nextSequence is correct (not nextSequence+-1)?
+                while (nextSequence <= availableSequence && nextSequence < processUpToSequence) { //按顺序处理
+                    event = dataProvider.get(nextSequence); // =ringBuffer
+                    eventHandler.onEvent(nextSequence, event); // TODO check if nextSequence is correct (not nextSequence+-1)? 检查nextSequence是否正确（不是nextSequence+-1）？
                     nextSequence++;
                 }
 
-                // exit if finished processing entire group (up to specified sequence)
+                // exit if finished processing entire group (up to specified sequence) 如果处理完整个组（直到指定的序列），则退出
                 if (nextSequence == processUpToSequence) {
                     sequence.set(processUpToSequence - 1);
                     waitSpinningHelper.signalAllWhenBlocking();

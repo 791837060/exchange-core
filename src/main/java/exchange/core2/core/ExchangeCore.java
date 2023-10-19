@@ -81,6 +81,7 @@ public final class ExchangeCore {
 
         this.exchangeConfiguration = exchangeConfiguration;
 
+        // matchingEnginesNum riskEnginesNum
         final PerformanceConfiguration perfCfg = exchangeConfiguration.getPerformanceCfg();
 
         final int ringBufferSize = perfCfg.getRingBufferSize();
@@ -103,7 +104,7 @@ public final class ExchangeCore {
         final IOrderBook.OrderBookFactory orderBookFactory = perfCfg.getOrderBookFactory();
 
         final int matchingEnginesNum = perfCfg.getMatchingEnginesNum();
-        final int riskEnginesNum = perfCfg.getRiskEnginesNum();
+        final int riskEnginesNum = perfCfg.getRiskEnginesNum(); // 必须是2的幂
 
         final SerializationConfiguration serializationCfg = exchangeConfiguration.getSerializationCfg();
 
@@ -126,11 +127,12 @@ public final class ExchangeCore {
         disruptor.setDefaultExceptionHandler(exceptionHandler);
 
         // advice completable future to use the same CPU socket as disruptor
+        // 建议可完成的将来使用与中断器相同的CPU插槽
         final ExecutorService loaderExecutor = Executors.newFixedThreadPool(matchingEnginesNum + riskEnginesNum, threadFactory);
 
         // start creating matching engines
         final Map<Integer, CompletableFuture<MatchingEngineRouter>> matchingEngineFutures = IntStream.range(0, matchingEnginesNum)
-                .boxed()
+                .boxed()// 返回一个由该流的元素组成的流，每个元素都被装箱为Integer 0 1 2 3
                 .collect(Collectors.toMap(
                         shardId -> shardId,
                         shardId -> CompletableFuture.supplyAsync(
@@ -150,7 +152,7 @@ public final class ExchangeCore {
 
         final EventHandler<OrderCommand>[] matchingEngineHandlers = matchingEngineFutures.values().stream()
                 .map(CompletableFuture::join)
-                .map(mer -> (EventHandler<OrderCommand>) (cmd, seq, eob) -> mer.processOrder(seq, cmd))
+                .map(mer -> (EventHandler<OrderCommand>) (cmd, seq, eob) -> mer.processOrder(seq, cmd)) //匹配订单
                 .toArray(ExchangeCore::newEventHandlersArray);
 
         final Map<Integer, RiskEngine> riskEngines = riskEngineFutures.entrySet().stream()
@@ -162,19 +164,51 @@ public final class ExchangeCore {
         final List<TwoStepMasterProcessor> procR1 = new ArrayList<>(riskEnginesNum);
         final List<TwoStepSlaveProcessor> procR2 = new ArrayList<>(riskEnginesNum);
 
-        // 1. grouping processor (G)
+
+        /**
+         *
+         *
+         *
+         *
+         *
+         *
+         *                                           ---TwoStepMasterProcessor(R1)---
+         *                                           ---TwoStepMasterProcessor(R1)---
+         * GroupingProcessor---serializationProcessor---TwoStepMasterProcessor(R1)---
+         *                                           ---TwoStepMasterProcessor(R1)---
+         *
+         *              ---matchingEngineHandlers---
+         * ((R1)全完成后)---matchingEngineHandlers---
+         *
+         *
+         *               ---TwoStepSlaveProcessor(R2)---
+         * (match都完成后)---TwoStepSlaveProcessor(R2)---
+         *
+         * 在(matchingEngineHandlers, jh)都完成后，--- resultsHandler
+         *
+         *
+         *
+         **/
+
+
+        // 1. grouping processor (G) //切换到下一组-让从属处理器开始执行其处理周期
+        // 仅是事件处理工厂
         final EventHandlerGroup<OrderCommand> afterGrouping =
                 disruptor.handleEventsWith((rb, bs) -> new GroupingProcessor(rb, rb.newBarrier(bs), perfCfg, coreWaitStrategy, sharedPool));
 
         // 2. [journaling (J)] in parallel with risk hold (R1) + matching engine (ME)
 
         boolean enableJournaling = serializationCfg.isEnableJournaling();
+        // 单线程写日志
         final EventHandler<OrderCommand> jh = enableJournaling ? serializationProcessor::writeToJournal : null;
 
+        // 串行操作
         if (enableJournaling) {
+            // 不是工厂
             afterGrouping.handleEventsWith(jh);
         }
 
+        // 不是串行操作，查日志发现procR1是并行的, 因为仅是事件处理工厂
         riskEngines.forEach((idx, riskEngine) -> afterGrouping.handleEventsWith(
                 (rb, bs) -> {
                     final TwoStepMasterProcessor r1 = new TwoStepMasterProcessor(rb, rb.newBarrier(bs), riskEngine::preProcessCommand, exceptionHandler, coreWaitStrategy, "R1_" + idx);
@@ -182,29 +216,35 @@ public final class ExchangeCore {
                     return r1;
                 }));
 
-        disruptor.after(procR1.toArray(new TwoStepMasterProcessor[0])).handleEventsWith(matchingEngineHandlers);
+        // 在多个TwoStepMasterProcessor后matchingEngineHandlers并行操作
+        // 请注意，toArray（new Object[0]）在函数上与toArray（）相同。
+        // 3.1 matchingEngineHandlers after risk release (R1)
+        disruptor.after(procR1.toArray(new TwoStepMasterProcessor[0])).handleEventsWith(matchingEngineHandlers); //是事件处理器，不是工厂
 
         // 3. risk release (R2) after matching engine (ME)
-        final EventHandlerGroup<OrderCommand> afterMatchingEngine = disruptor.after(matchingEngineHandlers);
+        final EventHandlerGroup<OrderCommand> afterMatchingEngine = disruptor.after(matchingEngineHandlers); //在第4步二选一
 
+        // 仅是事件处理工厂,并行的
         riskEngines.forEach((idx, riskEngine) -> afterMatchingEngine.handleEventsWith(
                 (rb, bs) -> {
+                    //riskEngine::handlerRiskRelease 由从处理器onEvent调用
                     final TwoStepSlaveProcessor r2 = new TwoStepSlaveProcessor(rb, rb.newBarrier(bs), riskEngine::handlerRiskRelease, exceptionHandler, "R2_" + idx);
                     procR2.add(r2);
                     return r2;
                 }));
 
 
-        // 4. results handler (E) after matching engine (ME) + [journaling (J)]
+        // 4. results handler (E) after (matching engine (ME) + [journaling (J)])
         final EventHandlerGroup<OrderCommand> mainHandlerGroup = enableJournaling
                 ? disruptor.after(arraysAddHandler(matchingEngineHandlers, jh))
                 : afterMatchingEngine;
 
         final ResultsHandler resultsHandler = new ResultsHandler(resultsConsumer);
 
+        //是事件处理器，不是工厂
         mainHandlerGroup.handleEventsWith((cmd, seq, eob) -> {
-            resultsHandler.onEvent(cmd, seq, eob);
-            api.processResult(seq, cmd); // TODO SLOW ?(volatile operations)
+            resultsHandler.onEvent(cmd, seq, eob); //重放全部时， 不执行
+            api.processResult(seq, cmd); // TODO SLOW ?(volatile operations) 不稳定操作
         });
 
         // attach slave processors to master processor

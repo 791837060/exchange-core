@@ -101,13 +101,14 @@ public final class TwoStepMasterProcessor implements EventProcessor {
 
         long nextSequence = sequence.get() + 1L;
 
-        long currentSequenceGroup = 0;
+        long currentSequenceGroup = 0; //当前序列组
 
-        // wait until slave processor has instructed to run
+        // wait until slave processor has instructed to run 等待，直到从属处理器指示运行
         while (!slaveProcessor.isRunning()) {
             Thread.yield();
         }
 
+        // 消费者线程一直在while循环中不断获取生产者数据
         while (true) {
             OrderCommand cmd = null;
             try {
@@ -119,12 +120,13 @@ public final class TwoStepMasterProcessor implements EventProcessor {
                     while (nextSequence <= availableSequence) {
                         cmd = dataProvider.get(nextSequence);
 
-                        // switch to next group - let slave processor start doing its handling cycle
+                        // switch to next group - let slave processor start doing its handling cycle 切换到下一组-让从属处理器开始执行其处理周期
                         if (cmd.eventsGroup != currentSequenceGroup) {
                             publishProgressAndTriggerSlaveProcessor(nextSequence);
                             currentSequenceGroup = cmd.eventsGroup;
                         }
 
+                        //处理主处理器自己的
                         boolean forcedPublish = eventHandler.onEvent(nextSequence, cmd);
                         nextSequence++;
 
@@ -158,7 +160,7 @@ public final class TwoStepMasterProcessor implements EventProcessor {
 
     private void publishProgressAndTriggerSlaveProcessor(final long nextSequence) {
         sequence.set(nextSequence - 1);
-        waitSpinningHelper.signalAllWhenBlocking();
+        waitSpinningHelper.signalAllWhenBlocking(); //等待旋转助手.封锁时发出全部信号
         slaveProcessor.handlingCycle(nextSequence);
     }
 

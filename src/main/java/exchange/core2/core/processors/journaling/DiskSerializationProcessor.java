@@ -421,6 +421,7 @@ public final class DiskSerializationProcessor implements ISerializationProcessor
         // TODO refactor reading, use EOF flag
 
         int partitionCounter = 1;
+        // 线程一直在while循环中, 直到FileNotFoundException
         while (true) {
 
             final Path path = resolveJournalPath(partitionCounter, initialCfg.getSnapshotId());

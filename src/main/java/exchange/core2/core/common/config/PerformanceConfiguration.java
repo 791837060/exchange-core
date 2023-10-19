@@ -37,6 +37,7 @@ public final class PerformanceConfiguration {
 
     /*
      * Number of risk engines. Each instance requires extra CPU core.
+     * 风险引擎的数量。每个实例都需要额外的CPU核心。
      */
     private final int riskEnginesNum;
 

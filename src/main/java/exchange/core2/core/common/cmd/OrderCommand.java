@@ -42,7 +42,7 @@ public final class OrderCommand implements IOrder {
     public long size;
 
     @Getter
-    // new orders INPUT - reserved price for fast moves of GTC bid orders in exchange mode
+    // new orders INPUT - reserved price for fast moves of GTC bid orders in exchange mode GTC投标订单在交换模式下快速移动的保留价格
     public long reserveBidPrice;
 
     // required for PLACE_ORDER only;
@@ -60,10 +60,10 @@ public final class OrderCommand implements IOrder {
 
     public int userCookie;
 
-    // filled by grouping processor:
+    // filled by grouping processor: 由分组处理器填写：
 
-    public long eventsGroup;
-    public int serviceFlags;
+    public long eventsGroup; // 切换到下一组-让从属处理器开始执行其处理周期
+    public int serviceFlags; // 为风险处理程序发布市场数据
 
     // result code of command execution - can also be used for saving intermediate state
     public CommandResultCode resultCode;
@@ -71,7 +71,7 @@ public final class OrderCommand implements IOrder {
     // trade events chain
     public MatcherTradeEvent matcherEvent;
 
-    // optional market data
+    // optional market data 可选市场数据
     public L2MarketData marketData;
 
     // sequence of last available for this command

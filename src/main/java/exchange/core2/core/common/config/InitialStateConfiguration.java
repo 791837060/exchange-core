@@ -67,7 +67,7 @@ public final class InitialStateConfiguration {
 
     /**
      * Clean start configuration with journaling on.
-     *
+     * 在日志记录打开的情况下清理启动配置。
      * @param exchangeId Exchange ID
      * @return clean start configuration with journaling on.
      */

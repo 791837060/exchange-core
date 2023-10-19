@@ -31,6 +31,7 @@ public final class PerfLatencyJournaling {
     /*
      * -------------- Disk Journaling tests -----------------
      * Recommended tuned profile: latency-performance
+     * 推荐的优化配置文件：延迟性能
      *
      */
 
@@ -60,7 +61,7 @@ public final class PerfLatencyJournaling {
                         .build(),
                 TestDataParameters.singlePairExchangeBuilder().build(),
                 InitialStateConfiguration.cleanStartJournaling(ExchangeTestContainer.timeBasedExchangeId()),
-                SerializationConfiguration.DISK_JOURNALING,
+                SerializationConfiguration.DISK_JOURNALING,// snapshots and journaling
                 6);
     }
 
@@ -75,8 +76,8 @@ public final class PerfLatencyJournaling {
                         .build(),
                 TestDataParameters.mediumBuilder().build(),
                 InitialStateConfiguration.cleanStartJournaling(ExchangeTestContainer.timeBasedExchangeId()),
-                SerializationConfiguration.DISK_JOURNALING,
-                3);
+                SerializationConfiguration.DISK_JOURNALING,// snapshots and journaling
+                3); // 预热周期
     }
 
     @Test
@@ -90,12 +91,12 @@ public final class PerfLatencyJournaling {
                         .build(),
                 TestDataParameters.largeBuilder().build(),
                 InitialStateConfiguration.cleanStartJournaling(ExchangeTestContainer.timeBasedExchangeId()),
-                SerializationConfiguration.DISK_JOURNALING,
+                SerializationConfiguration.DISK_JOURNALING,// snapshots and journaling
                 3);
     }
 
     @Test
-    public void testLatencyMultiSymbolHugeJournaling() {
+    public void testLatencyMultiSymbolHugeJournaling() { // 测试延迟多符号巨大日志
         latencyTestImpl(
                 PerformanceConfiguration.latencyPerformanceBuilder()
                         .ringBufferSize(64 * 1024)
@@ -105,7 +106,7 @@ public final class PerfLatencyJournaling {
                         .build(),
                 TestDataParameters.hugeBuilder().build(),
                 InitialStateConfiguration.cleanStartJournaling(ExchangeTestContainer.timeBasedExchangeId()),
-                SerializationConfiguration.DISK_JOURNALING,
+                SerializationConfiguration.DISK_JOURNALING,// snapshots and journaling
                 2);
     }
 }

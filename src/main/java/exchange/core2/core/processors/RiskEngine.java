@@ -92,7 +92,7 @@ public final class RiskEngine implements WriteBytesMarshallable {
                       final ExchangeConfiguration exchangeConfiguration) {
 
         if (Long.bitCount(numShards) != 1) {
-            throw new IllegalArgumentException("Invalid number of shards " + numShards + " - must be power of 2");
+            throw new IllegalArgumentException("Invalid number of shards " + numShards + " - must be power of 2"); //必须是2的幂
         }
 
         final InitialStateConfiguration initStateCfg = exchangeConfiguration.getInitStateCfg();
@@ -111,6 +111,7 @@ public final class RiskEngine implements WriteBytesMarshallable {
 
         this.logDebug = exchangeConfiguration.getLoggingCfg().getLoggingLevels().contains(LoggingConfiguration.LoggingLevel.LOGGING_RISK_DEBUG);
 
+        // 可以从快照加载
         if (ISerializationProcessor.canLoadFromSnapshot(serializationProcessor, initStateCfg, shardId, MODULE_RE)) {
 
             // TODO refactor, change to creator (simpler init)`
@@ -216,20 +217,28 @@ public final class RiskEngine implements WriteBytesMarshallable {
         }
     }
 
-
-    /**
-     * Pre-process command handler
-     * 1. MOVE/CANCEL commands ignored, for specific uid marked as valid for matching engine
-     * 2. PLACE ORDER checked with risk ending for specific uid
-     * 3. ADD USER, BALANCE_ADJUSTMENT processed for specific uid, not valid for matching engine
-     * 4. BINARY_DATA commands processed for ANY uid and marked as valid for matching engine TODO which handler marks?
-     * 5. RESET commands processed for any uid
-     *
-     * @param cmd - command
-     * @param seq - command sequence
-     * @return true if caller should publish sequence even if batch was not processed yet
-     */
-    public boolean preProcessCommand(final long seq, final OrderCommand cmd) {
+  /**
+   * Pre-process command handler
+   * 1. MOVE/CANCEL commands ignored, for specific uid marked as valid for matching engine
+   * 2. PLACE ORDER checked with risk ending for specific uid
+   * 3. ADD USER, BALANCE_ADJUSTMENT processed for specific uid, not valid for matching engine
+   * 4. BINARY_DATA commands processed for ANY uid and marked as valid for matching engine TODO which handler marks?
+   * 5. RESET commands processed for any uid
+   *
+   * 预处理命令处理程序
+   * *1。忽略MOVE/CANCEL命令，用于标记为对匹配引擎有效的特定uid
+   * *2。已检查特定uid的带有风险结束的PLACE ORDER
+   * *3。为特定uid处理的ADD USER、BALANCE_ADJUSTIMENT对匹配引擎无效
+   * *4。为ANY uid处理并标记为对匹配引擎有效的BINARY_DATA命令TODO哪个处理程序标记？
+   * *5。为任何uid处理的RESET命令
+   *
+   * @param cmd - command
+   * @param seq - command sequence
+   * @return true if caller should publish sequence even if batch was not processed yet
+   */
+  public boolean preProcessCommand(final long seq, final OrderCommand cmd) {
+      //ultemp
+      //log.info("RiskEngine1 preProcessCommand currentTimeMillis {} shardId {} cmd {}", System.currentTimeMillis(), shardId, cmd);
         switch (cmd.command) {
             case MOVE_ORDER:
             case CANCEL_ORDER:
@@ -238,10 +247,10 @@ public final class RiskEngine implements WriteBytesMarshallable {
                 return false;
 
             case PLACE_ORDER:
-                if (uidForThisHandler(cmd.uid)) {
+                if (uidForThisHandler(cmd.uid)) { //是否这个实例处理
                     cmd.resultCode = placeOrderRiskCheck(cmd);
                 }
-                return false;
+                return false; //break?
 
             case ADD_USER:
                 if (uidForThisHandler(cmd.uid)) {
@@ -288,6 +297,7 @@ public final class RiskEngine implements WriteBytesMarshallable {
                 if (shardId == 0) {
                     cmd.resultCode = CommandResultCode.VALID_FOR_MATCHING_ENGINE;
                 }
+                // 完成整批处理前发布序列
                 return true;// true = publish sequence before finishing processing whole batch
 
             case PERSIST_STATE_RISK:
@@ -376,6 +386,7 @@ public final class RiskEngine implements WriteBytesMarshallable {
         }
 
         // check if account has enough funds
+        // 检查帐户是否有足够的资金
         final CommandResultCode resultCode = placeOrder(cmd, userProfile, spec);
 
         if (resultCode != CommandResultCode.VALID_FOR_MATCHING_ENGINE) {
@@ -555,7 +566,12 @@ public final class RiskEngine implements WriteBytesMarshallable {
         return newRequiredMarginForSymbol <= userProfile.accounts.get(position.currency) + freeMargin;
     }
 
-    public boolean handlerRiskRelease(final long seq, final OrderCommand cmd) {
+
+    //由从处理器onEvent调用
+    public boolean handlerRiskRelease(final long seq, final OrderCommand cmd) { //Risk 2 匹配完以后处理匹配交易事件
+
+        //ultemp
+        //log.info("RiskEngine2 handlerRiskRelease currentTimeMillis {} shardId {} cmd {}", System.currentTimeMillis(), shardId, cmd);
 
         final int symbol = cmd.symbol;
 
@@ -563,6 +579,7 @@ public final class RiskEngine implements WriteBytesMarshallable {
         MatcherTradeEvent mte = cmd.matcherEvent;
 
         // skip events processing if no events (or if contains BINARY EVENT)
+        // 如果没有事件（或包含BINARY EVENT），则跳过事件处理
         if (marketData == null && (mte == null || mte.eventType == MatcherEventType.BINARY_EVENT)) {
             return false;
         }
@@ -576,17 +593,19 @@ public final class RiskEngine implements WriteBytesMarshallable {
 
         if (mte != null && mte.eventType != MatcherEventType.BINARY_EVENT) {
             // at least one event to process, resolving primary/taker user profile
+            // 至少一个要处理的事件，解析 主要/接受者 用户配置文件
             // TODO processing order is reversed
-            if (spec.type == SymbolType.CURRENCY_EXCHANGE_PAIR) {
+            if (spec.type == SymbolType.CURRENCY_EXCHANGE_PAIR) { //货币兑换对
 
                 final UserProfile takerUp = uidForThisHandler(cmd.uid)
                         ? userProfileService.getUserProfileOrAddSuspended(cmd.uid)
                         : null;
 
                 // REJECT always comes first; REDUCE is always single event
+                // 拒绝总是第一位的；REDUCE始终是单个事件
                 if (mte.eventType == MatcherEventType.REDUCE || mte.eventType == MatcherEventType.REJECT) {
-                    if (takerUp != null) {
-                        handleMatcherRejectReduceEventExchange(cmd, mte, spec, takerSell, takerUp);
+                    if (takerUp != null) { //是本实例处理
+                        handleMatcherRejectReduceEventExchange(cmd, mte, spec, takerSell, takerUp); //处理匹配器 拒绝/减少 事件, 回滚账户余额
                     }
                     mte = mte.nextEvent;
                 }
@@ -602,17 +621,19 @@ public final class RiskEngine implements WriteBytesMarshallable {
 
                 final UserProfile takerUp = uidForThisHandler(cmd.uid) ? userProfileService.getUserProfileOrAddSuspended(cmd.uid) : null;
 
-                // for margin-mode symbols also resolve position record
+                // for margin-mode symbols also resolve position record 对于保证金模式符号，还解析位置记录
+                // takerUp != null 才是本实例处理的
                 final SymbolPositionRecord takerSpr = (takerUp != null) ? takerUp.getPositionRecordOrThrowEx(symbol) : null;
                 do {
                     handleMatcherEventMargin(mte, spec, cmd.action, takerUp, takerSpr);
-                    mte = mte.nextEvent;
+                    mte = mte.nextEvent; // MatcherTradeEvent
                 } while (mte != null);
             }
         }
 
         // Process marked data
-        if (marketData != null && cfgMarginTradingEnabled) {
+        // 为风险处理程序发布市场数据
+        if (marketData != null && cfgMarginTradingEnabled) { //cfg已启用保证金交易
             final RiskEngine.LastPriceCacheRecord record = lastPriceCache.getIfAbsentPut(symbol, RiskEngine.LastPriceCacheRecord::new);
             record.askPrice = (marketData.askSize != 0) ? marketData.askPrices[0] : Long.MAX_VALUE;
             record.bidPrice = (marketData.bidSize != 0) ? marketData.bidPrices[0] : 0;

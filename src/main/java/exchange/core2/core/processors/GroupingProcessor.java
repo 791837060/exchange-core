@@ -114,8 +114,8 @@ public final class GroupingProcessor implements EventProcessor {
     private void processEvents() {
         long nextSequence = sequence.get() + 1L;
 
-        long groupCounter = 0;
-        long msgsInGroup = 0;
+        long groupCounter = 0; //切换到下一组-让从属处理器开始执行其处理周期
+        long msgsInGroup = 0;  //组里消息数
 
         long groupLastNs = 0;
 
@@ -129,6 +129,7 @@ public final class GroupingProcessor implements EventProcessor {
 
         boolean groupingEnabled = true;
 
+        // 消费者线程一直在while循环中不断获取生产者数据
         while (true) {
             try {
 
@@ -143,11 +144,12 @@ public final class GroupingProcessor implements EventProcessor {
                         nextSequence++;
 
                         if (cmd.command == OrderCommandType.GROUPING_CONTROL) {
-                            groupingEnabled = cmd.orderId == 1;
+                            groupingEnabled = cmd.orderId == 1; //重放全部时， orderId = mode = 0 , 则groupingEnabled = false, 重放全部时, 清空数据
                             cmd.resultCode = CommandResultCode.SUCCESS;
                         }
 
                         if (!groupingEnabled) {
+                            //重放全部时, 清空数据
                             // TODO pooling
                             cmd.matcherEvent = null;
                             cmd.marketData = null;
@@ -155,6 +157,7 @@ public final class GroupingProcessor implements EventProcessor {
                         }
 
                         // some commands should trigger R2 stage to avoid unprocessed events that could affect accounting state
+                        // 一些命令应该触发R2阶段，以避免可能影响记帐状态的未处理事件
                         if (cmd.command == OrderCommandType.RESET
                                 || cmd.command == OrderCommandType.PERSIST_STATE_MATCHING
                                 || cmd.command == OrderCommandType.GROUPING_CONTROL) {
@@ -163,22 +166,23 @@ public final class GroupingProcessor implements EventProcessor {
                         }
 
                         // report/binary commands also should trigger R2 stage, but only for last message
+                        // 报告/二进制命令也应该触发R2阶段，但仅用于最后一条消息
                         if ((cmd.command == OrderCommandType.BINARY_DATA_COMMAND || cmd.command == OrderCommandType.BINARY_DATA_QUERY) && cmd.symbol == -1) {
                             groupCounter++;
                             msgsInGroup = 0;
                         }
 
-                        cmd.eventsGroup = groupCounter;
+                        cmd.eventsGroup = groupCounter; //此事件后的， 切换到下一组-让从属处理器开始执行其处理周期 值传递,后面加的没用?
 
 
                         if (triggerL2DataRequest) {
                             triggerL2DataRequest = false;
-                            cmd.serviceFlags = 1;
+                            cmd.serviceFlags = 1; // 为风险处理程序发布市场数据
                         } else {
-                            cmd.serviceFlags = 0;
+                            cmd.serviceFlags = 0; // 此命令不发布市场数据
                         }
 
-                        // cleaning attached events
+                        // cleaning attached events 清理附加事件
                         if (EVENTS_POOLING && cmd.matcherEvent != null) {
 
                             // update tail
@@ -206,10 +210,10 @@ public final class GroupingProcessor implements EventProcessor {
                             }
 
                         }
-                        cmd.matcherEvent = null;
+                        cmd.matcherEvent = null; //GroupingProcessor在匹配前执行, 所以清理干净, 用于匹配后装东西
 
                         // TODO collect to shared buffer
-                        cmd.marketData = null;
+                        cmd.marketData = null; //GroupingProcessor在匹配前执行, 所以清理干净
 
                         msgsInGroup++;
 
@@ -234,11 +238,12 @@ public final class GroupingProcessor implements EventProcessor {
                     }
 
                     if (t > l2dataLastNs) {
-                        // TODO fix order best price updating mechanism,
-                        //  this does not work for multi-symbol configuration
-
-                        l2dataLastNs = t + L2_PUBLISH_INTERVAL_NS; // trigger L2 data every 10ms
-                        triggerL2DataRequest = true;
+            // TODO fix order best price updating mechanism,
+            //  this does not work for multi-symbol configuration
+            // 固定订单最优价格更新机制，
+            // 这不适用于多符号配置
+            l2dataLastNs = t + L2_PUBLISH_INTERVAL_NS; // trigger L2 data every 10ms
+                        triggerL2DataRequest = true; // 为风险处理程序发布市场数据
                     }
                 }
 

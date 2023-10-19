@@ -45,7 +45,8 @@ public final class AffinityThreadFactory implements ThreadFactory {
 
         affinityReservations.add(runnable);
 
-        return new Thread(() -> executePinned(runnable));
+        //return new Thread(() -> executePinned(runnable));
+        return new Thread(() -> executeUlTest(runnable));
 
     }
 
@@ -67,6 +68,17 @@ public final class AffinityThreadFactory implements ThreadFactory {
                 affinityReservations.remove(runnable);
             }
         }
+    }
+
+    //ultemp
+    private void executeUlTest(@NotNull Runnable runnable) {
+        final int threadId = threadsCounter.incrementAndGet();
+        Thread.currentThread().setName(String.format("Thread-AF-%d", threadId));
+
+        log.debug("{} will be running on thread={}",
+                runnable, Thread.currentThread().getName());
+
+        runnable.run();
     }
 
     private synchronized AffinityLock getAffinityLockSync() {
